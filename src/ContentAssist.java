@@ -10,9 +10,14 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsEnvironment;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.lang.annotation.Retention;
@@ -41,6 +46,7 @@ import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JSeparator;
@@ -63,12 +69,15 @@ import javax.swing.text.PlainDocument;
  * 
  * @author Adam Martinu
  */
+// TODO create mSearch action, menus and method
 @SuppressWarnings({ "serial", "javadoc" })
 public class ContentAssist extends JFrame {
 
 	// action keys
 	@Key(KeyType.INTERNAL)
 	public static final String AK_CLEAR_PROPERTY = "clearProperty";
+	@Key(KeyType.INTERNAL)
+	public static final String AK_EDIT_PROPERTY = "editProperty";
 	@Key(KeyType.INTERNAL)
 	public static final String AK_NAV_GO_TO = "navGoTo";
 	@Key(KeyType.INTERNAL)
@@ -77,6 +86,8 @@ public class ContentAssist extends JFrame {
 	public static final String AK_NAV_PREV = "navPrev";
 	@Key(KeyType.INTERNAL)
 	public static final String AK_NEW_PROPERTY = "newProperty";
+	@Key(KeyType.INTERNAL)
+	public static final String AK_UPDATE = "update";
 
 	// component keys
 	@Key(KeyType.INTERNAL)
@@ -88,17 +99,29 @@ public class ContentAssist extends JFrame {
 	@Key(KeyType.INTERNAL)
 	public static final String CK_LIST = "list";
 	@Key(KeyType.INTERNAL)
+	public static final String CK_lIST_POPUP_MENU = "listPopupMenu";
+	@Key(KeyType.INTERNAL)
 	public static final String CK_MENU_BAR = "menuBar";
 	@Key(KeyType.INTERNAL)
 	public static final String CK_M_ABOUT = "mAbout";
 	@Key(KeyType.INTERNAL)
 	public static final String CK_M_CLEAR_PROPERTY = "mClearProperty";
 	@Key(KeyType.INTERNAL)
+	public static final String CK_M_EDIT_PROPERTY = "mEditProperty";
+	@Key(KeyType.INTERNAL)
 	public static final String CK_M_EXIT = "mExit";
 	@Key(KeyType.INTERNAL)
 	public static final String CK_M_FILE = "mFile";
 	@Key(KeyType.INTERNAL)
 	public static final String CK_M_HELP = "mHelp";
+	@Key(KeyType.INTERNAL)
+	public static final String CK_M_LIST_CLEAR_PROPERTY = "mListClearProperty";
+	@Key(KeyType.INTERNAL)
+	public static final String CK_M_LIST_EDIT_PROPERTY = "mListEditProperty";
+	@Key(KeyType.INTERNAL)
+	public static final String CK_M_LIST_NEW_PROPERTY = "mListNewProperty";
+	@Key(KeyType.INTERNAL)
+	public static final String CK_M_LIST_UPDATE = "mListUpdate";
 	@Key(KeyType.INTERNAL)
 	public static final String CK_M_NAVIGATE = "mNavigate";
 	@Key(KeyType.INTERNAL)
@@ -150,10 +173,10 @@ public class ContentAssist extends JFrame {
 	public ContentAssist() {
 		super(STRING_TITLE, defaultGC());
 		setLocale(Locale.ROOT);
-		// init model with system properties
-		initListModel();
 		// create user interface
 		createGUI();
+		// update list
+		updateList();
 	}
 
 	public void addAction(final String actionKey, final ActionListener action) throws NullPointerException {
@@ -280,6 +303,16 @@ public class ContentAssist extends JFrame {
 		try {
 			final String rv = System.clearProperty(key);
 			listModel.remove(index);
+
+			if (listModel.isEmpty()) {
+				final JMenuItem mClearProperty = (JMenuItem) getComponent(CK_M_CLEAR_PROPERTY);
+				mClearProperty.setEnabled(false);
+				final JMenuItem mEditProperty = (JMenuItem) getComponent(CK_M_EDIT_PROPERTY);
+				mEditProperty.setEnabled(false);
+				final JMenuItem mUpdate = (JMenuItem) getComponent(CK_M_UPDATE);
+				mUpdate.setEnabled(false);
+			}
+
 			return rv;
 		}
 		catch (final SecurityException e) {
@@ -301,6 +334,16 @@ public class ContentAssist extends JFrame {
 			for (int index = 0; index < listModel.size(); index++)
 				if (listModel.get(index).startsWith(key.toString()))
 					listModel.remove(index);
+
+			if (listModel.isEmpty()) {
+				final JMenuItem mClearProperty = (JMenuItem) getComponent(CK_M_CLEAR_PROPERTY);
+				mClearProperty.setEnabled(false);
+				final JMenuItem mEditProperty = (JMenuItem) getComponent(CK_M_EDIT_PROPERTY);
+				mEditProperty.setEnabled(false);
+				final JMenuItem mUpdate = (JMenuItem) getComponent(CK_M_UPDATE);
+				mUpdate.setEnabled(false);
+			}
+
 			return rv;
 		}
 		catch (final SecurityException e) {
@@ -310,6 +353,113 @@ public class ContentAssist extends JFrame {
 					JOptionPane.ERROR_MESSAGE);
 			return null;
 		}
+	}
+
+	public void editProperty() {
+		// cannot edit an empty list
+		if (listModel.isEmpty())
+			return;
+
+		final JDialog dialog =
+				new JDialog(this, "Edit Property", ModalityType.APPLICATION_MODAL, getGraphicsConfiguration());
+
+		final JPanel dialogContentPane = new JPanel(null, true);
+		final JLabel labelComboBox = new JLabel("Property:");
+		final JComboBox<Object> comboBox = new JComboBox<>(getPropertyKeys());
+		final JLabel labelTextField = new JLabel("New value:");
+		final JTextField textField = new JTextField(new PlainDocument(), "", 25);
+		final JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0), true);
+		final JButton buttonFinish = new JButton("Finish");
+		final JButton buttonCancel = new JButton("Cancel");
+
+		labelComboBox.setAlignmentX(0.0F);
+		labelComboBox.setHorizontalAlignment(JLabel.HORIZONTAL);
+		labelComboBox.setLabelFor(comboBox);
+		labelComboBox.setName("labelComboBox");
+
+		comboBox.setAlignmentX(0.0F);
+		comboBox.setEditable(false);
+		comboBox.setName("comboBox");
+		{
+			final JList<?> list = (JList<?>) getComponent(CK_LIST);
+			final int index = list.getSelectedIndex();
+			if (index != -1)
+				comboBox.setSelectedIndex(index);
+		}
+
+		labelTextField.setAlignmentX(0.0F);
+		labelTextField.setHorizontalAlignment(JLabel.HORIZONTAL);
+		labelTextField.setLabelFor(textField);
+		labelTextField.setName("labelTextField");
+
+		textField.setAlignmentX(0.0F);
+		textField.setHorizontalAlignment(JTextField.LEFT);
+		textField.setName("textField");
+
+		buttonFinish.setName("buttonFinish");
+		buttonFinish.addActionListener(dialogEvent -> {
+			final int index = comboBox.getSelectedIndex();
+			final Object key = comboBox.getItemAt(index);
+			final String value = textField.getText();
+			assert key != null : "key is null";
+			assert value != null : "value is null";
+
+			try {
+				System.setProperty(key.toString(), value);
+				listModel.remove(index);
+				listModel.add(index, key.toString() + " = " + value);
+
+				dialog.dispose();
+			}
+			catch (final SecurityException e) {
+				e.printStackTrace();
+				getToolkit().beep();
+				JOptionPane.showMessageDialog(dialog,
+						"The installed security manager does not allow setting of the specified property.", "Error!",
+						JOptionPane.ERROR_MESSAGE);
+				comboBox.requestFocusInWindow();
+			}
+		});
+
+		buttonCancel.setName("buttonCancel");
+		buttonCancel.addActionListener(dialogEvent -> { dialog.dispose(); });
+
+		buttonPanel.setAlignmentX(0.0F);
+		buttonPanel.setName("buttonPanel");
+		buttonPanel.add(buttonFinish);
+		buttonPanel.add(Box.createHorizontalStrut(5));
+		buttonPanel.add(buttonCancel);
+
+		dialogContentPane.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+		dialogContentPane.setLayout(new BoxLayout(dialogContentPane, BoxLayout.Y_AXIS));
+		dialogContentPane.setName("dialogContentPane");
+		dialogContentPane.add(labelComboBox);
+		dialogContentPane.add(Box.createVerticalStrut(2));
+		dialogContentPane.add(comboBox);
+		dialogContentPane.add(Box.createVerticalStrut(5));
+		dialogContentPane.add(labelTextField);
+		dialogContentPane.add(Box.createVerticalStrut(2));
+		dialogContentPane.add(textField);
+		dialogContentPane.add(Box.createVerticalStrut(5));
+		dialogContentPane.add(new JSeparator(JSeparator.HORIZONTAL));
+		dialogContentPane.add(Box.createVerticalStrut(5));
+		dialogContentPane.add(buttonPanel);
+
+		dialog.setContentPane(dialogContentPane);
+		dialog.setName("ClearPropertyDialog");
+		dialog.setResizable(false);
+		dialog.addWindowFocusListener(new WindowAdapter() {
+
+			@Override
+			public void windowGainedFocus(final WindowEvent dialogEvent) {
+				comboBox.requestFocusInWindow();
+			}
+		});
+
+		dialog.pack();
+		dialog.setLocationRelativeTo(this);
+
+		dialog.setVisible(true);
 	}
 
 	public ActionListener getAction(final String actionKey) {
@@ -332,8 +482,7 @@ public class ContentAssist extends JFrame {
 		if (index < 0 || index >= listModel.size())
 			throw new IndexOutOfBoundsException();
 
-		@SuppressWarnings("unchecked")
-		final JList<String> list = (JList<String>) getComponent(CK_LIST);
+		final JList<?> list = (JList<?>) getComponent(CK_LIST);
 		list.setSelectedIndex(index);
 	}
 
@@ -342,8 +491,7 @@ public class ContentAssist extends JFrame {
 		if (listModel.isEmpty())
 			return;
 
-		@SuppressWarnings("unchecked")
-		final JList<String> list = (JList<String>) getComponent(CK_LIST);
+		final JList<?> list = (JList<?>) getComponent(CK_LIST);
 		final ListSelectionModel model = list.getSelectionModel();
 		int index = model.getMinSelectionIndex();
 		if (index == -1)
@@ -362,8 +510,7 @@ public class ContentAssist extends JFrame {
 		if (listModel.isEmpty())
 			return;
 
-		@SuppressWarnings("unchecked")
-		final JList<String> list = (JList<String>) getComponent(CK_LIST);
+		final JList<?> list = (JList<?>) getComponent(CK_LIST);
 		final ListSelectionModel model = list.getSelectionModel();
 		int index = model.getMinSelectionIndex();
 		if (index == -1)
@@ -422,9 +569,17 @@ public class ContentAssist extends JFrame {
 				System.setProperty(key, value);
 				textFieldKey.setBackground(defaultColor);
 				listModel.addElement(key + " = " + value);
+
+				final JMenuItem mClearProperty = (JMenuItem) getComponent(CK_M_CLEAR_PROPERTY);
+				mClearProperty.setEnabled(true);
+				final JMenuItem mEditProperty = (JMenuItem) getComponent(CK_M_EDIT_PROPERTY);
+				mEditProperty.setEnabled(true);
+				final JMenuItem mUpdate = (JMenuItem) getComponent(CK_M_UPDATE);
+				mUpdate.setEnabled(true);
+
 				dialog.dispose();
-				@SuppressWarnings("unchecked")
-				final JList<String> list = (JList<String>) getComponent(CK_LIST);
+
+				final JList<?> list = (JList<?>) getComponent(CK_LIST);
 				list.setSelectedIndex(listModel.size() - 1);
 			}
 			catch (final IllegalArgumentException e) {
@@ -500,8 +655,7 @@ public class ContentAssist extends JFrame {
 		try {
 			System.setProperty(key, value);
 			listModel.addElement(key + " = " + value);
-			@SuppressWarnings("unchecked")
-			final JList<String> list = (JList<String>) getComponent(CK_LIST);
+			final JList<?> list = (JList<?>) getComponent(CK_LIST);
 			list.setSelectedIndex(listModel.size() - 1);
 		}
 		catch (final SecurityException e) {
@@ -538,6 +692,24 @@ public class ContentAssist extends JFrame {
 		return componentMap.remove(componentKey);
 	}
 
+	public void updateList() {
+		initListModel();
+
+		final boolean empty = listModel.isEmpty();
+
+		final JMenuItem mClearProperty = (JMenuItem) getComponent(CK_M_CLEAR_PROPERTY);
+		mClearProperty.setEnabled(!empty);
+		final JMenuItem mEditProperty = (JMenuItem) getComponent(CK_M_EDIT_PROPERTY);
+		mEditProperty.setEnabled(!empty);
+		final JMenuItem mUpdate = (JMenuItem) getComponent(CK_M_UPDATE);
+		mUpdate.setEnabled(!empty);
+
+		if (!empty) {
+			final JList<?> list = (JList<?>) getComponent(CK_LIST);
+			list.scrollRectToVisible(list.getCellBounds(0, 0));
+		}
+	}
+
 	protected void createGUI() {
 
 		/* ********** */
@@ -555,17 +727,22 @@ public class ContentAssist extends JFrame {
 
 		final JMenu mFile = new JMenu("File");
 		final JMenuItem mNewProperty = new JMenuItem("New Property...", KeyEvent.VK_N);
+		final JMenuItem mEditProperty = new JMenuItem("Edit Property...", KeyEvent.VK_E);
 		final JMenuItem mClearProperty = new JMenuItem("Clear Property...", KeyEvent.VK_C);
 		final JMenuItem mUpdate = new JMenuItem("Update List", KeyEvent.VK_U);
 		final JMenuItem mExit = new JMenuItem("Exit", KeyEvent.VK_E);
-
 		final JMenu mNavigate = new JMenu("Navigate");
 		final JMenuItem mNavNext = new JMenuItem("Next Property", KeyEvent.VK_N);
 		final JMenuItem mNavPrev = new JMenuItem("Previous Property", KeyEvent.VK_P);
 		final JMenuItem mNavGoTo = new JMenuItem("Go to Property...", KeyEvent.VK_G);
-
 		final JMenu mHelp = new JMenu("Help");
 		final JMenuItem mAbout = new JMenuItem("About", KeyEvent.VK_A);
+
+		final JPopupMenu listPopupMenu = new JPopupMenu();
+		final JMenuItem mListNewProperty = new JMenuItem("New Property...", KeyEvent.VK_N);
+		final JMenuItem mListEditProperty = new JMenuItem("Edit Property...", KeyEvent.VK_E);
+		final JMenuItem mListClearProperty = new JMenuItem("Clear Property...", KeyEvent.VK_C);
+		final JMenuItem mListUpdate = new JMenuItem("Update List", KeyEvent.VK_U);
 
 		/* ******* */
 		/* ACTIONS */
@@ -575,10 +752,6 @@ public class ContentAssist extends JFrame {
 			// cannot modify an empty list
 			if (listModel.isEmpty())
 				return;
-
-			// combo box foreground colors
-			final Color defaultColor;
-			final Color errorColor = Color.RED;
 
 			final JDialog dialog =
 					new JDialog(this, "Clear Property", ModalityType.APPLICATION_MODAL, getGraphicsConfiguration());
@@ -598,24 +771,32 @@ public class ContentAssist extends JFrame {
 			comboBox.setAlignmentX(0.0F);
 			comboBox.setEditable(false);
 			comboBox.setName("comboBox");
-			defaultColor = comboBox.getForeground();
+			{
+				final String property = list.getSelectedValue();
+				if (property != null)
+					comboBox.setSelectedItem(property.substring(0, property.indexOf(" = ")));
+			}
 
 			buttonFinish.setName("buttonFinish");
 			buttonFinish.addActionListener(dialogEvent -> {
-				final Object key = comboBox.getSelectedItem();
+				final int index = comboBox.getSelectedIndex();
+				final Object key = comboBox.getItemAt(index);
 				assert key != null : "key is null";
 
 				try {
 					System.clearProperty(key.toString());
-					comboBox.setForeground(defaultColor);
-					for (int index = 0; index < listModel.size(); index++)
-						if (listModel.get(index).startsWith(key.toString()))
-							listModel.remove(index);
+					listModel.remove(index);
+
+					if (listModel.isEmpty()) {
+						mClearProperty.setEnabled(false);
+						mEditProperty.setEnabled(false);
+						mUpdate.setEnabled(false);
+					}
+
 					dialog.dispose();
 				}
 				catch (final SecurityException e) {
 					e.printStackTrace();
-					comboBox.setForeground(errorColor);
 					getToolkit().beep();
 					JOptionPane.showMessageDialog(dialog,
 							"The installed security manager does not allow access to the specified property.", "Error!",
@@ -639,6 +820,112 @@ public class ContentAssist extends JFrame {
 			dialogContentPane.add(label);
 			dialogContentPane.add(Box.createVerticalStrut(2));
 			dialogContentPane.add(comboBox);
+			dialogContentPane.add(Box.createVerticalStrut(5));
+			dialogContentPane.add(new JSeparator(JSeparator.HORIZONTAL));
+			dialogContentPane.add(Box.createVerticalStrut(5));
+			dialogContentPane.add(buttonPanel);
+
+			dialog.setContentPane(dialogContentPane);
+			dialog.setName("ClearPropertyDialog");
+			dialog.setResizable(false);
+			dialog.addWindowFocusListener(new WindowAdapter() {
+
+				@Override
+				public void windowGainedFocus(final WindowEvent dialogEvent) {
+					comboBox.requestFocusInWindow();
+				}
+			});
+
+			dialog.pack();
+			dialog.setLocationRelativeTo(this);
+
+			dialog.setVisible(true);
+		};
+
+		final ActionListener actionEditProperty = event -> {
+			// cannot edit an empty list
+			if (listModel.isEmpty())
+				return;
+
+			final JDialog dialog =
+					new JDialog(this, "Edit Property", ModalityType.APPLICATION_MODAL, getGraphicsConfiguration());
+
+			final JPanel dialogContentPane = new JPanel(null, true);
+			final JLabel labelComboBox = new JLabel("Property:");
+			final JComboBox<Object> comboBox = new JComboBox<>(getPropertyKeys());
+			final JLabel labelTextField = new JLabel("New value:");
+			final JTextField textField = new JTextField(new PlainDocument(), "", 25);
+			final JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0), true);
+			final JButton buttonFinish = new JButton("Finish");
+			final JButton buttonCancel = new JButton("Cancel");
+
+			labelComboBox.setAlignmentX(0.0F);
+			labelComboBox.setHorizontalAlignment(JLabel.HORIZONTAL);
+			labelComboBox.setLabelFor(comboBox);
+			labelComboBox.setName("labelComboBox");
+
+			comboBox.setAlignmentX(0.0F);
+			comboBox.setEditable(false);
+			comboBox.setName("comboBox");
+			{
+				final int index = list.getSelectedIndex();
+				if (index != -1)
+					comboBox.setSelectedIndex(index);
+			}
+
+			labelTextField.setAlignmentX(0.0F);
+			labelTextField.setHorizontalAlignment(JLabel.HORIZONTAL);
+			labelTextField.setLabelFor(textField);
+			labelTextField.setName("labelTextField");
+
+			textField.setAlignmentX(0.0F);
+			textField.setHorizontalAlignment(JTextField.LEFT);
+			textField.setName("textField");
+
+			buttonFinish.setName("buttonFinish");
+			buttonFinish.addActionListener(dialogEvent -> {
+				final int index = comboBox.getSelectedIndex();
+				final Object key = comboBox.getItemAt(index);
+				final String value = textField.getText();
+				assert key != null : "key is null";
+				assert value != null : "value is null";
+
+				try {
+					System.setProperty(key.toString(), value);
+					listModel.remove(index);
+					listModel.add(index, key.toString() + " = " + value);
+
+					dialog.dispose();
+				}
+				catch (final SecurityException e) {
+					e.printStackTrace();
+					getToolkit().beep();
+					JOptionPane.showMessageDialog(dialog,
+							"The installed security manager does not allow setting of the specified property.",
+							"Error!", JOptionPane.ERROR_MESSAGE);
+					comboBox.requestFocusInWindow();
+				}
+			});
+
+			buttonCancel.setName("buttonCancel");
+			buttonCancel.addActionListener(dialogEvent -> { dialog.dispose(); });
+
+			buttonPanel.setAlignmentX(0.0F);
+			buttonPanel.setName("buttonPanel");
+			buttonPanel.add(buttonFinish);
+			buttonPanel.add(Box.createHorizontalStrut(5));
+			buttonPanel.add(buttonCancel);
+
+			dialogContentPane.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+			dialogContentPane.setLayout(new BoxLayout(dialogContentPane, BoxLayout.Y_AXIS));
+			dialogContentPane.setName("dialogContentPane");
+			dialogContentPane.add(labelComboBox);
+			dialogContentPane.add(Box.createVerticalStrut(2));
+			dialogContentPane.add(comboBox);
+			dialogContentPane.add(Box.createVerticalStrut(5));
+			dialogContentPane.add(labelTextField);
+			dialogContentPane.add(Box.createVerticalStrut(2));
+			dialogContentPane.add(textField);
 			dialogContentPane.add(Box.createVerticalStrut(5));
 			dialogContentPane.add(new JSeparator(JSeparator.HORIZONTAL));
 			dialogContentPane.add(Box.createVerticalStrut(5));
@@ -859,12 +1146,20 @@ public class ContentAssist extends JFrame {
 			buttonFinish.addActionListener(dialogEvent -> {
 				final String key = textFieldKey.getText();
 				final String value = textFieldValue.getText();
+				assert key != null : "key is null";
+				assert value != null : "value is null";
 
 				try {
 					System.setProperty(key, value);
 					textFieldKey.setBackground(defaultColor);
 					listModel.addElement(key + " = " + value);
+
+					mClearProperty.setEnabled(true);
+					mEditProperty.setEnabled(true);
+					mUpdate.setEnabled(true);
+
 					dialog.dispose();
+
 					list.setSelectedIndex(listModel.size() - 1);
 				}
 				catch (final IllegalArgumentException e) {
@@ -928,11 +1223,19 @@ public class ContentAssist extends JFrame {
 			dialog.setVisible(true);
 		};
 
+		final ActionListener actionUpdate = event -> {
+			initListModel();
+			if (!listModel.isEmpty())
+				list.scrollRectToVisible(list.getCellBounds(0, 0));
+		};
+
 		actionMap.put(AK_CLEAR_PROPERTY, actionClearProperty);
+		actionMap.put(AK_EDIT_PROPERTY, actionEditProperty);
 		actionMap.put(AK_NAV_GO_TO, actionNavGoTo);
 		actionMap.put(AK_NAV_NEXT, actionNavNext);
 		actionMap.put(AK_NAV_PREV, actionNavPrev);
 		actionMap.put(AK_NEW_PROPERTY, actionNewProperty);
+		actionMap.put(AK_UPDATE, actionUpdate);
 
 		/* ******* */
 		/* CONTENT */
@@ -946,8 +1249,49 @@ public class ContentAssist extends JFrame {
 			if (event.getValueIsAdjusting())
 				return;
 
-			if (!listModel.isEmpty())
-				list.scrollRectToVisible(list.getCellBounds(list.getSelectedIndex(), list.getSelectedIndex()));
+			if (!listModel.isEmpty()) {
+				final Rectangle cell = list.getCellBounds(list.getSelectedIndex(), list.getSelectedIndex());
+				if (cell != null)
+					list.scrollRectToVisible(cell);
+			}
+		});
+		list.addMouseListener(new MouseAdapter() {
+
+			@Override
+			public void mouseClicked(final MouseEvent event) {
+				if (SwingUtilities.isLeftMouseButton(event) && event.getClickCount() == 2) {
+					final ActionEvent actionEvent = new ActionEvent(event, ActionEvent.ACTION_PERFORMED, null);
+					actionEditProperty.actionPerformed(actionEvent);
+				}
+			}
+
+			@Override
+			public void mousePressed(final MouseEvent event) {
+				if (event.isPopupTrigger())
+					triggerPopupMenu(event);
+			}
+
+			@Override
+			public void mouseReleased(final MouseEvent event) {
+				if (event.isPopupTrigger())
+					triggerPopupMenu(event);
+			}
+
+			void triggerPopupMenu(final MouseEvent event) {
+				final PropertyCellRenderer pcr = (PropertyCellRenderer) list.getCellRenderer();
+				final int index = (int) Math.floor(event.getPoint().getY() / pcr.getCellHeight());
+				if (index >= 0 && index < listModel.size())
+					list.getSelectionModel().setSelectionInterval(index, index);
+
+				final boolean b = listModel.isEmpty();
+				mListClearProperty.setEnabled(!b);
+				mListUpdate.setEnabled(!b);
+
+				Point point = list.getPopupLocation(event);
+				if (point == null)
+					point = event.getPoint();
+				listPopupMenu.show(list, point.x, point.y);
+			}
 		});
 		componentMap.put(CK_LIST, list);
 
@@ -989,18 +1333,18 @@ public class ContentAssist extends JFrame {
 		mNewProperty.addActionListener(actionNewProperty);
 		componentMap.put(CK_M_NEW_PROPERTY, mNewProperty);
 
-		mClearProperty.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, InputEvent.CTRL_DOWN_MASK));
+		mEditProperty.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, InputEvent.CTRL_DOWN_MASK));
+		mEditProperty.setName(CK_M_EDIT_PROPERTY);
+		mEditProperty.addActionListener(actionEditProperty);
+		componentMap.put(CK_M_EDIT_PROPERTY, mEditProperty);
+
 		mClearProperty.setName(CK_M_CLEAR_PROPERTY);
 		mClearProperty.addActionListener(actionClearProperty);
 		componentMap.put(CK_M_CLEAR_PROPERTY, mClearProperty);
 
-		mUpdate.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_U, InputEvent.CTRL_DOWN_MASK));
+		mUpdate.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0));
 		mUpdate.setName(CK_M_UPDATE);
-		mUpdate.addActionListener(event -> {
-			initListModel();
-			if (!listModel.isEmpty())
-				list.scrollRectToVisible(list.getCellBounds(0, 0));
-		});
+		mUpdate.addActionListener(actionUpdate);
 		componentMap.put(CK_M_UPDATE, mUpdate);
 
 		mExit.setName(CK_M_EXIT);
@@ -1010,6 +1354,7 @@ public class ContentAssist extends JFrame {
 		mFile.setMnemonic(KeyEvent.VK_F);
 		mFile.setName(CK_M_FILE);
 		mFile.add(mNewProperty);
+		mFile.add(mEditProperty);
 		mFile.add(mClearProperty);
 		mFile.add(mUpdate);
 		mFile.addSeparator();
@@ -1017,6 +1362,7 @@ public class ContentAssist extends JFrame {
 		componentMap.put(CK_M_FILE, mFile);
 
 		mNavNext.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_PERIOD, InputEvent.CTRL_DOWN_MASK));
+
 		mNavNext.setName(CK_M_NAV_NEXT);
 		mNavNext.setToolTipText("Select the next property in the list");
 		mNavNext.addActionListener(actionNavNext);
@@ -1108,6 +1454,32 @@ public class ContentAssist extends JFrame {
 		menuBar.add(mHelp);
 		componentMap.put(CK_MENU_BAR, menuBar);
 
+		mListNewProperty.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, InputEvent.CTRL_DOWN_MASK));
+		mListNewProperty.setName(CK_M_NEW_PROPERTY);
+		mListNewProperty.addActionListener(actionNewProperty);
+		componentMap.put(CK_M_NEW_PROPERTY, mListNewProperty);
+
+		mListEditProperty.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, InputEvent.CTRL_DOWN_MASK));
+		mListEditProperty.setName(CK_M_LIST_EDIT_PROPERTY);
+		mListEditProperty.addActionListener(actionEditProperty);
+		componentMap.put(CK_M_LIST_EDIT_PROPERTY, mListEditProperty);
+
+		mListClearProperty.setName(CK_M_CLEAR_PROPERTY);
+		mListClearProperty.addActionListener(actionClearProperty);
+		componentMap.put(CK_M_CLEAR_PROPERTY, mListClearProperty);
+
+		mListUpdate.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0));
+		mListUpdate.setName(CK_M_LIST_UPDATE);
+		mListUpdate.addActionListener(actionUpdate);
+		componentMap.put(CK_M_LIST_UPDATE, mListUpdate);
+
+		listPopupMenu.setName(CK_lIST_POPUP_MENU);
+		listPopupMenu.add(mListNewProperty);
+		listPopupMenu.add(mListEditProperty);
+		listPopupMenu.add(mListClearProperty);
+		listPopupMenu.add(mListUpdate);
+		componentMap.put(CK_lIST_POPUP_MENU, listPopupMenu);
+
 		/* ***** */
 		/* FRAME */
 		/* ***** */
@@ -1149,6 +1521,11 @@ public class ContentAssist extends JFrame {
 		public PropertyCellRenderer() {
 			setBorder(BorderFactory.createEmptyBorder(3, 5, 3, 5));
 			setOpaque(true);
+		}
+
+		public int getCellHeight() {
+			final FontMetrics fm = getFontMetrics(getFont());
+			return fm.getHeight() + 6;
 		}
 
 		@Override
