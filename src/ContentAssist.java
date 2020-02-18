@@ -10,6 +10,8 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsEnvironment;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
@@ -33,8 +35,10 @@ import java.util.Set;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.ButtonGroup;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
@@ -47,6 +51,7 @@ import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
+import javax.swing.JRadioButton;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JSeparator;
@@ -58,6 +63,8 @@ import javax.swing.ListSelectionModel;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
+import javax.swing.event.ListDataEvent;
+import javax.swing.event.ListDataListener;
 import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DocumentFilter;
@@ -70,7 +77,9 @@ import javax.swing.text.PlainDocument;
  * @author Adam Martinu
  */
 // TODO create mSearch action, menus and method
-@SuppressWarnings({ "serial", "javadoc" })
+@SuppressWarnings({
+		"serial", "javadoc"
+})
 public class ContentAssist extends JFrame {
 
 	// action keys
@@ -78,6 +87,8 @@ public class ContentAssist extends JFrame {
 	public static final String AK_CLEAR_PROPERTY = "clearProperty";
 	@Key(KeyType.INTERNAL)
 	public static final String AK_EDIT_PROPERTY = "editProperty";
+	@Key(KeyType.INTERNAL)
+	public static final String AK_FIND_PROPERTY = "navGoTo";
 	@Key(KeyType.INTERNAL)
 	public static final String AK_NAV_GO_TO = "navGoTo";
 	@Key(KeyType.INTERNAL)
@@ -113,11 +124,15 @@ public class ContentAssist extends JFrame {
 	@Key(KeyType.INTERNAL)
 	public static final String CK_M_FILE = "mFile";
 	@Key(KeyType.INTERNAL)
+	public static final String CK_M_FIND_PROPERTY = "mFindProperty";
+	@Key(KeyType.INTERNAL)
 	public static final String CK_M_HELP = "mHelp";
 	@Key(KeyType.INTERNAL)
 	public static final String CK_M_LIST_CLEAR_PROPERTY = "mListClearProperty";
 	@Key(KeyType.INTERNAL)
 	public static final String CK_M_LIST_EDIT_PROPERTY = "mListEditProperty";
+	@Key(KeyType.INTERNAL)
+	public static final String CK_M_LIST_FIND_PROPERTY = "mListFindProperty";
 	@Key(KeyType.INTERNAL)
 	public static final String CK_M_LIST_NEW_PROPERTY = "mListNewProperty";
 	@Key(KeyType.INTERNAL)
@@ -132,6 +147,8 @@ public class ContentAssist extends JFrame {
 	public static final String CK_M_NAV_PREV = "mNavPrev";
 	@Key(KeyType.INTERNAL)
 	public static final String CK_M_NEW_PROPERTY = "mNewProperty";
+	@Key(KeyType.INTERNAL)
+	public static final String CK_M_SEARCH = "mSearch";
 	@Key(KeyType.INTERNAL)
 	public static final String CK_M_UPDATE = "mUpdate";
 	@Key(KeyType.INTERNAL)
@@ -169,6 +186,7 @@ public class ContentAssist extends JFrame {
 	protected final DefaultListModel<String> listModel = new DefaultListModel<>();
 	protected final HashMap<String, JComponent> componentMap = new HashMap<>();
 	protected final HashMap<String, ActionListener> actionMap = new HashMap<>();
+	protected final SearchOptionsCache cache = new SearchOptionsCache();
 
 	public ContentAssist() {
 		super(STRING_TITLE, defaultGC());
@@ -238,6 +256,7 @@ public class ContentAssist extends JFrame {
 				for (int index = 0; index < listModel.size(); index++)
 					if (listModel.get(index).startsWith(key.toString()))
 						listModel.remove(index);
+
 				dialog.dispose();
 			}
 			catch (final SecurityException e) {
@@ -252,7 +271,9 @@ public class ContentAssist extends JFrame {
 		});
 
 		buttonCancel.setName("buttonCancel");
-		buttonCancel.addActionListener(dialogEvent -> { dialog.dispose(); });
+		buttonCancel.addActionListener(dialogEvent -> {
+			dialog.dispose();
+		});
 
 		buttonPanel.setAlignmentX(0.0F);
 		buttonPanel.setName("buttonPanel");
@@ -304,15 +325,6 @@ public class ContentAssist extends JFrame {
 			final String rv = System.clearProperty(key);
 			listModel.remove(index);
 
-			if (listModel.isEmpty()) {
-				final JMenuItem mClearProperty = (JMenuItem) getComponent(CK_M_CLEAR_PROPERTY);
-				mClearProperty.setEnabled(false);
-				final JMenuItem mEditProperty = (JMenuItem) getComponent(CK_M_EDIT_PROPERTY);
-				mEditProperty.setEnabled(false);
-				final JMenuItem mUpdate = (JMenuItem) getComponent(CK_M_UPDATE);
-				mUpdate.setEnabled(false);
-			}
-
 			return rv;
 		}
 		catch (final SecurityException e) {
@@ -334,15 +346,6 @@ public class ContentAssist extends JFrame {
 			for (int index = 0; index < listModel.size(); index++)
 				if (listModel.get(index).startsWith(key.toString()))
 					listModel.remove(index);
-
-			if (listModel.isEmpty()) {
-				final JMenuItem mClearProperty = (JMenuItem) getComponent(CK_M_CLEAR_PROPERTY);
-				mClearProperty.setEnabled(false);
-				final JMenuItem mEditProperty = (JMenuItem) getComponent(CK_M_EDIT_PROPERTY);
-				mEditProperty.setEnabled(false);
-				final JMenuItem mUpdate = (JMenuItem) getComponent(CK_M_UPDATE);
-				mUpdate.setEnabled(false);
-			}
 
 			return rv;
 		}
@@ -422,7 +425,9 @@ public class ContentAssist extends JFrame {
 		});
 
 		buttonCancel.setName("buttonCancel");
-		buttonCancel.addActionListener(dialogEvent -> { dialog.dispose(); });
+		buttonCancel.addActionListener(dialogEvent -> {
+			dialog.dispose();
+		});
 
 		buttonPanel.setAlignmentX(0.0F);
 		buttonPanel.setName("buttonPanel");
@@ -570,13 +575,6 @@ public class ContentAssist extends JFrame {
 				textFieldKey.setBackground(defaultColor);
 				listModel.addElement(key + " = " + value);
 
-				final JMenuItem mClearProperty = (JMenuItem) getComponent(CK_M_CLEAR_PROPERTY);
-				mClearProperty.setEnabled(true);
-				final JMenuItem mEditProperty = (JMenuItem) getComponent(CK_M_EDIT_PROPERTY);
-				mEditProperty.setEnabled(true);
-				final JMenuItem mUpdate = (JMenuItem) getComponent(CK_M_UPDATE);
-				mUpdate.setEnabled(true);
-
 				dialog.dispose();
 
 				final JList<?> list = (JList<?>) getComponent(CK_LIST);
@@ -603,7 +601,9 @@ public class ContentAssist extends JFrame {
 		});
 
 		buttonCancel.setName("buttonCancel");
-		buttonCancel.addActionListener(dialogEvent -> { dialog.dispose(); });
+		buttonCancel.addActionListener(dialogEvent -> {
+			dialog.dispose();
+		});
 
 		buttonPanel.setAlignmentX(0.0F);
 		buttonPanel.setName("buttonPanel");
@@ -735,6 +735,8 @@ public class ContentAssist extends JFrame {
 		final JMenuItem mNavNext = new JMenuItem("Next Property", KeyEvent.VK_N);
 		final JMenuItem mNavPrev = new JMenuItem("Previous Property", KeyEvent.VK_P);
 		final JMenuItem mNavGoTo = new JMenuItem("Go to Property...", KeyEvent.VK_G);
+		final JMenu mSearch = new JMenu("Search");
+		final JMenuItem mFindProperty = new JMenuItem("Find Property...", KeyEvent.VK_F);
 		final JMenu mHelp = new JMenu("Help");
 		final JMenuItem mAbout = new JMenuItem("About", KeyEvent.VK_A);
 
@@ -742,6 +744,7 @@ public class ContentAssist extends JFrame {
 		final JMenuItem mListNewProperty = new JMenuItem("New Property...", KeyEvent.VK_N);
 		final JMenuItem mListEditProperty = new JMenuItem("Edit Property...", KeyEvent.VK_E);
 		final JMenuItem mListClearProperty = new JMenuItem("Clear Property...", KeyEvent.VK_C);
+		final JMenuItem mListFindProperty = new JMenuItem("Find Property...", KeyEvent.VK_F);
 		final JMenuItem mListUpdate = new JMenuItem("Update List", KeyEvent.VK_U);
 
 		/* ******* */
@@ -806,7 +809,9 @@ public class ContentAssist extends JFrame {
 			});
 
 			buttonCancel.setName("buttonCancel");
-			buttonCancel.addActionListener(dialogEvent -> { dialog.dispose(); });
+			buttonCancel.addActionListener(dialogEvent -> {
+				dialog.dispose();
+			});
 
 			buttonPanel.setAlignmentX(0.0F);
 			buttonPanel.setName("buttonPanel");
@@ -908,7 +913,9 @@ public class ContentAssist extends JFrame {
 			});
 
 			buttonCancel.setName("buttonCancel");
-			buttonCancel.addActionListener(dialogEvent -> { dialog.dispose(); });
+			buttonCancel.addActionListener(dialogEvent -> {
+				dialog.dispose();
+			});
 
 			buttonPanel.setAlignmentX(0.0F);
 			buttonPanel.setName("buttonPanel");
@@ -939,6 +946,170 @@ public class ContentAssist extends JFrame {
 				@Override
 				public void windowGainedFocus(final WindowEvent dialogEvent) {
 					comboBox.requestFocusInWindow();
+				}
+			});
+
+			dialog.pack();
+			dialog.setLocationRelativeTo(this);
+
+			dialog.setVisible(true);
+		};
+
+		final ActionListener actionFindProperty = event -> {
+			// cannot search an empty list
+			if (listModel.isEmpty())
+				return;
+
+			final JDialog dialog =
+					new JDialog(this, "Find Property", ModalityType.MODELESS, getGraphicsConfiguration());
+
+			final JPanel dialogContentPane = new JPanel(new GridBagLayout(), true);
+			final JLabel label = new JLabel("Find:");
+			final JTextField textField = new JTextField(new PlainDocument(), cache.getInput(), 25);
+			final JPanel radioButtonPanel = new JPanel(null, true);
+			final ButtonGroup radioButtonGroup = new ButtonGroup();
+			final JRadioButton radioButtonKey = new JRadioButton("Search for key");
+			final JRadioButton radioButtonValue = new JRadioButton("Search for value");
+			final JPanel optionsPanel = new JPanel(null, true);
+			final JCheckBox optionCaseSensitive = new JCheckBox("Case sensitive", cache.isCaseSensitive());
+			final JCheckBox optionWholeWord = new JCheckBox("Whole Word", cache.isWholeWord());
+			final JCheckBox optionRegularExpression = new JCheckBox("Regular Expression", cache.isRegularExpression());
+			final JCheckBox optionWrapSearch = new JCheckBox("Wrap Search", cache.isWrapSearch());
+			final JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0), true);
+			final JButton buttonFind = new JButton("Find");
+			final JButton buttonCancel = new JButton("Cancel");
+
+			label.setHorizontalAlignment(JLabel.LEFT);
+			label.setLabelFor(textField);
+			label.setName("label");
+
+			textField.setHorizontalAlignment(JTextField.LEFT);
+			textField.setName("textField");
+
+			radioButtonKey.setAlignmentX(0.0F);
+			radioButtonKey.setName("radioButtonKey");
+
+			radioButtonValue.setAlignmentX(0.0F);
+			radioButtonValue.setName("radioButtonValue");
+
+			radioButtonGroup.add(radioButtonKey);
+			radioButtonGroup.add(radioButtonValue);
+			radioButtonGroup.setSelected(radioButtonKey.getModel(), true);
+
+			radioButtonPanel.setBorder(BorderFactory.createTitledBorder("Search Type"));
+			radioButtonPanel.setLayout(new BoxLayout(radioButtonPanel, BoxLayout.Y_AXIS));
+			radioButtonPanel.setName("radioButtonPanel");
+			radioButtonPanel.add(radioButtonKey);
+			radioButtonPanel.add(radioButtonValue);
+
+			optionCaseSensitive.setAlignmentX(0.0F);
+			optionCaseSensitive.setName("optionCaseSensitive");
+
+			optionWholeWord.setAlignmentX(0.0F);
+			optionWholeWord.setName("optionWholeWord");
+
+			optionRegularExpression.setAlignmentX(0.0F);
+			optionRegularExpression.setName("optionRegularExpression");
+			optionRegularExpression.addItemListener(dialogEvent -> {
+				optionWholeWord.setEnabled(!optionRegularExpression.isSelected());
+			});
+			if (optionRegularExpression.isSelected())
+				optionWholeWord.setEnabled(false);
+
+			optionWrapSearch.setAlignmentX(0.0F);
+			optionWrapSearch.setName("optionWrapSearch");
+
+			optionsPanel.setBorder(BorderFactory.createTitledBorder("Options"));
+			optionsPanel.setLayout(new BoxLayout(optionsPanel, BoxLayout.Y_AXIS));
+			optionsPanel.setName("optionsPanel");
+			optionsPanel.add(optionCaseSensitive);
+			optionsPanel.add(optionWholeWord);
+			optionsPanel.add(optionRegularExpression);
+			optionsPanel.add(optionWrapSearch);
+
+			buttonFind.setName("buttonFind");
+			buttonFind.addActionListener(dialogEvent -> {
+				final String input = textField.getText();
+
+				// start index for search
+				int index = list.getSelectedIndex();
+				if (index == -1 || index == listModel.size() - 1)
+					index = 0;
+				else
+					index += 1;
+
+				if (optionRegularExpression.isSelected())
+					for (int i = index; i < listModel.size(); i++) {
+						String s = listModel.elementAt(i);
+						if (radioButtonKey.isSelected())
+							s = s.substring(0, s.indexOf(" = "));
+						else
+							s = s.substring(s.indexOf(" = "));
+
+					}
+				else if (optionWholeWord.isSelected()) {
+					if (optionCaseSensitive.isSelected())
+						;
+					else
+						;
+				}
+				else if (optionCaseSensitive.isSelected())
+					;
+				else
+					;
+
+				// TODO
+			});
+
+			buttonCancel.setName("buttonCancel");
+			buttonCancel.addActionListener(dialogEvent -> {
+				dialog.dispose();
+			});
+
+			buttonPanel.setName("buttonPanel");
+			buttonPanel.add(buttonFind);
+			buttonPanel.add(Box.createHorizontalStrut(5));
+			buttonPanel.add(buttonCancel);
+
+			dialogContentPane.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+			dialogContentPane.setName("dialogContentPane");
+			{
+				final GridBagConstraints c = new GridBagConstraints();
+				c.anchor = GridBagConstraints.WEST;
+				c.fill = GridBagConstraints.HORIZONTAL;
+				c.gridx = 0;
+				dialogContentPane.add(label, c);
+				dialogContentPane.add(textField, c);
+				dialogContentPane.add(Box.createVerticalStrut(5), c);
+				dialogContentPane.add(radioButtonPanel, c);
+				dialogContentPane.add(Box.createVerticalStrut(5), c);
+				dialogContentPane.add(optionsPanel, c);
+				dialogContentPane.add(Box.createVerticalStrut(5), c);
+				dialogContentPane.add(new JSeparator(JSeparator.HORIZONTAL), c);
+				dialogContentPane.add(Box.createVerticalStrut(5), c);
+				dialogContentPane.add(buttonPanel, c);
+			}
+
+			dialog.setContentPane(dialogContentPane);
+			dialog.setName("FindPropertyDialog");
+			dialog.setResizable(false);
+			dialog.addWindowFocusListener(new WindowAdapter() {
+
+				@Override
+				public void windowClosed(final WindowEvent dialogEvent) {
+					radioButtonGroup.remove(radioButtonKey);
+					radioButtonGroup.remove(radioButtonValue);
+
+					cache.setInput(textField.getText());
+					cache.setCaseSensitive(optionCaseSensitive.isSelected());
+					cache.setWholeWord(optionWholeWord.isSelected());
+					cache.setRegularExpression(optionRegularExpression.isSelected());
+					cache.setWrapSearch(optionWrapSearch.isSelected());
+				}
+
+				@Override
+				public void windowGainedFocus(final WindowEvent dialogEvent) {
+					radioButtonKey.requestFocusInWindow();
 				}
 			});
 
@@ -1070,7 +1241,9 @@ public class ContentAssist extends JFrame {
 			});
 
 			buttonCancel.setName("buttonCancel");
-			buttonCancel.addActionListener(dialogEvent -> { dialog.dispose(); });
+			buttonCancel.addActionListener(dialogEvent -> {
+				dialog.dispose();
+			});
 
 			buttonPanel.setAlignmentX(0.0F);
 			buttonPanel.setName("buttonPanel");
@@ -1183,7 +1356,9 @@ public class ContentAssist extends JFrame {
 			});
 
 			buttonCancel.setName("buttonCancel");
-			buttonCancel.addActionListener(dialogEvent -> { dialog.dispose(); });
+			buttonCancel.addActionListener(dialogEvent -> {
+				dialog.dispose();
+			});
 
 			buttonPanel.setAlignmentX(0.0F);
 			buttonPanel.setName("buttonPanel");
@@ -1231,6 +1406,7 @@ public class ContentAssist extends JFrame {
 
 		actionMap.put(AK_CLEAR_PROPERTY, actionClearProperty);
 		actionMap.put(AK_EDIT_PROPERTY, actionEditProperty);
+		actionMap.put(AK_FIND_PROPERTY, actionFindProperty);
 		actionMap.put(AK_NAV_GO_TO, actionNavGoTo);
 		actionMap.put(AK_NAV_NEXT, actionNavNext);
 		actionMap.put(AK_NAV_PREV, actionNavPrev);
@@ -1240,6 +1416,45 @@ public class ContentAssist extends JFrame {
 		/* ******* */
 		/* CONTENT */
 		/* ******* */
+
+		listModel.addListDataListener(new ListDataListener() {
+
+			@Override
+			public void contentsChanged(final ListDataEvent event) {
+			}
+
+			@Override
+			public void intervalAdded(final ListDataEvent event) {
+				mClearProperty.setEnabled(true);
+				mEditProperty.setEnabled(true);
+				mNavigate.setEnabled(true);
+				mNavNext.setEnabled(true);
+				mNavPrev.setEnabled(true);
+				mNavGoTo.setEnabled(true);
+				mFindProperty.setEnabled(true);
+
+				mListClearProperty.setEnabled(true);
+				mListEditProperty.setEnabled(true);
+				mListFindProperty.setEnabled(true);
+			}
+
+			@Override
+			public void intervalRemoved(final ListDataEvent event) {
+				if (listModel.isEmpty()) {
+					mClearProperty.setEnabled(false);
+					mEditProperty.setEnabled(false);
+					mNavigate.setEnabled(false);
+					mNavNext.setEnabled(false);
+					mNavPrev.setEnabled(false);
+					mNavGoTo.setEnabled(false);
+					mFindProperty.setEnabled(false);
+
+					mListClearProperty.setEnabled(false);
+					mListEditProperty.setEnabled(false);
+					mListFindProperty.setEnabled(false);
+				}
+			}
+		});
 
 		list.setCellRenderer(new PropertyCellRenderer());
 		list.setName(CK_LIST);
@@ -1282,10 +1497,6 @@ public class ContentAssist extends JFrame {
 				final int index = (int) Math.floor(event.getPoint().getY() / pcr.getCellHeight());
 				if (index >= 0 && index < listModel.size())
 					list.getSelectionModel().setSelectionInterval(index, index);
-
-				final boolean b = listModel.isEmpty();
-				mListClearProperty.setEnabled(!b);
-				mListUpdate.setEnabled(!b);
 
 				Point point = list.getPopupLocation(event);
 				if (point == null)
@@ -1348,7 +1559,9 @@ public class ContentAssist extends JFrame {
 		componentMap.put(CK_M_UPDATE, mUpdate);
 
 		mExit.setName(CK_M_EXIT);
-		mExit.addActionListener(event -> { dispatchEvent(new WindowEvent(this, WindowEvent.WINDOW_CLOSING)); });
+		mExit.addActionListener(event -> {
+			dispatchEvent(new WindowEvent(this, WindowEvent.WINDOW_CLOSING));
+		});
 		componentMap.put(CK_M_EXIT, mExit);
 
 		mFile.setMnemonic(KeyEvent.VK_F);
@@ -1356,13 +1569,13 @@ public class ContentAssist extends JFrame {
 		mFile.add(mNewProperty);
 		mFile.add(mEditProperty);
 		mFile.add(mClearProperty);
+		mFile.addSeparator();
 		mFile.add(mUpdate);
 		mFile.addSeparator();
 		mFile.add(mExit);
 		componentMap.put(CK_M_FILE, mFile);
 
 		mNavNext.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_PERIOD, InputEvent.CTRL_DOWN_MASK));
-
 		mNavNext.setName(CK_M_NAV_NEXT);
 		mNavNext.setToolTipText("Select the next property in the list");
 		mNavNext.addActionListener(actionNavNext);
@@ -1388,6 +1601,16 @@ public class ContentAssist extends JFrame {
 		mNavigate.add(mNavGoTo);
 		componentMap.put(CK_M_NAVIGATE, mNavigate);
 
+		mFindProperty.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK));
+		mFindProperty.setName(CK_M_FIND_PROPERTY);
+		mFindProperty.addActionListener(actionFindProperty);
+		componentMap.put(CK_M_FIND_PROPERTY, mFindProperty);
+
+		mSearch.setMnemonic(KeyEvent.VK_S);
+		mSearch.setName(CK_M_SEARCH);
+		mSearch.add(mFindProperty);
+		componentMap.put(CK_M_SEARCH, mSearch);
+
 		mAbout.setName(CK_M_ABOUT);
 		mAbout.addActionListener(event -> {
 			final JDialog dialog =
@@ -1411,7 +1634,9 @@ public class ContentAssist extends JFrame {
 			textArea.setWrapStyleWord(true);
 
 			buttonClose.setName("buttonClose");
-			buttonClose.addActionListener(dialogEvent -> { dialog.dispose(); });
+			buttonClose.addActionListener(dialogEvent -> {
+				dialog.dispose();
+			});
 
 			buttonPanel.setAlignmentX(0.0F);
 			buttonPanel.setName("buttonPanel");
@@ -1451,6 +1676,7 @@ public class ContentAssist extends JFrame {
 		menuBar.setName(CK_MENU_BAR);
 		menuBar.add(mFile);
 		menuBar.add(mNavigate);
+		menuBar.add(mSearch);
 		menuBar.add(mHelp);
 		componentMap.put(CK_MENU_BAR, menuBar);
 
@@ -1468,6 +1694,10 @@ public class ContentAssist extends JFrame {
 		mListClearProperty.addActionListener(actionClearProperty);
 		componentMap.put(CK_M_CLEAR_PROPERTY, mListClearProperty);
 
+		mListFindProperty.setName(CK_M_LIST_FIND_PROPERTY);
+		mListFindProperty.addActionListener(actionFindProperty);
+		componentMap.put(CK_M_LIST_FIND_PROPERTY, mListFindProperty);
+
 		mListUpdate.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0));
 		mListUpdate.setName(CK_M_LIST_UPDATE);
 		mListUpdate.addActionListener(actionUpdate);
@@ -1477,6 +1707,9 @@ public class ContentAssist extends JFrame {
 		listPopupMenu.add(mListNewProperty);
 		listPopupMenu.add(mListEditProperty);
 		listPopupMenu.add(mListClearProperty);
+		listPopupMenu.addSeparator();
+		listPopupMenu.add(mListFindProperty);
+		listPopupMenu.addSeparator();
 		listPopupMenu.add(mListUpdate);
 		componentMap.put(CK_lIST_POPUP_MENU, listPopupMenu);
 
@@ -1545,6 +1778,56 @@ public class ContentAssist extends JFrame {
 			setPreferredSize(new Dimension(fm.stringWidth(value), fm.getHeight() + 6));
 
 			return this;
+		}
+
+	}
+
+	public static class SearchOptionsCache {
+
+		public String input = "";
+		public boolean caseSensitive = false;
+		public boolean regularExpression = false;
+		public boolean wholeWord = false;
+		public boolean wrapSearch = false;
+
+		public String getInput() {
+			return input;
+		}
+
+		public boolean isCaseSensitive() {
+			return caseSensitive;
+		}
+
+		public boolean isRegularExpression() {
+			return regularExpression;
+		}
+
+		public boolean isWholeWord() {
+			return wholeWord;
+		}
+
+		public boolean isWrapSearch() {
+			return wrapSearch;
+		}
+
+		public void setCaseSensitive(final boolean caseSensitive) {
+			this.caseSensitive = caseSensitive;
+		}
+
+		public void setInput(final String input) {
+			this.input = input;
+		}
+
+		public void setRegularExpression(final boolean regularExpression) {
+			this.regularExpression = regularExpression;
+		}
+
+		public void setWholeWord(final boolean wholeWord) {
+			this.wholeWord = wholeWord;
+		}
+
+		public void setWrapSearch(final boolean wrapSearch) {
+			this.wrapSearch = wrapSearch;
 		}
 
 	}
